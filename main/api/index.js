@@ -15,7 +15,7 @@ dotenv.config();
 
 const port = process.env.PORT || 4040;
 
-
+// Connect to MongoDB
 mongoose.connect(process.env.MONGO_URL, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log("Database connected successfully"))
   .catch(err => console.log('Database connection failed', err));
@@ -23,20 +23,19 @@ mongoose.connect(process.env.MONGO_URL, { useNewUrlParser: true, useUnifiedTopol
 const jwtSecret = process.env.JWT_SECRET;
 const bcryptSalt = bcrypt.genSaltSync(10);
 
-
 const app = express();
 app.use('/uploads', express.static(__dirname + '/uploads'));
 app.use(express.json());
 app.use(cookieParser());
 
-
+// CORS configuration
 const corsOptions = {
-  origin: 'http://localhost:5173', 
+  origin: 'http://localhost:5173', // Replace with your frontend URL
   credentials: true,
 };
 app.use(cors(corsOptions));
 
-
+// Utility function to extract user data from JWT token
 async function getUserDataFromRequest(req) {
   return new Promise((resolve, reject) => {
     const token = req.cookies?.token;
@@ -46,28 +45,31 @@ async function getUserDataFromRequest(req) {
         resolve(userData);
       });
     } else {
-      reject('no token');
+      reject('No token found');
     }
   });
 }
 
-
+// Example endpoint for testing
 app.get('/test', (req, res) => {
-  res.json('test ok');
+  res.json('Test endpoint is working!');
 });
 
-
+// Endpoint to fetch messages between users
 app.get('/messages/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     const userData = await getUserDataFromRequest(req);
     const ourUserId = userData.userId;
+    
+    // Fetch messages between two users
     const messages = await Message.find({
       $or: [
         { sender: userId, recipient: ourUserId },
         { sender: ourUserId, recipient: userId }
       ]
     }).sort({ createdAt: 1 });
+    
     res.json(messages);
   } catch (error) {
     console.error('Error fetching messages:', error);
@@ -75,7 +77,7 @@ app.get('/messages/:userId', async (req, res) => {
   }
 });
 
-
+// Endpoint to fetch all users
 app.get('/people', async (req, res) => {
   try {
     const users = await User.find({}, { _id: 1, username: 1 });
@@ -86,12 +88,12 @@ app.get('/people', async (req, res) => {
   }
 });
 
-
+// Endpoint to fetch user profile
 app.get('/profile', async (req, res) => {
   try {
     const token = req.cookies?.token;
     if (!token) {
-      throw new Error('No token');
+      throw new Error('No token found');
     }
     jwt.verify(token, jwtSecret, {}, (err, userData) => {
       if (err) throw err;
@@ -103,7 +105,7 @@ app.get('/profile', async (req, res) => {
   }
 });
 
-
+// Endpoint for user login
 app.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -123,12 +125,12 @@ app.post('/login', async (req, res) => {
   }
 });
 
-
+// Endpoint for user logout
 app.post('/logout', (req, res) => {
-  res.clearCookie('token').json('ok');
+  res.clearCookie('token').json('Logout successful');
 });
 
-
+// Endpoint for user registration
 app.post('/register', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -142,15 +144,17 @@ app.post('/register', async (req, res) => {
   }
 });
 
-
+// Start HTTP server
 const server = app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`)
+  console.log(`Server is running on http://localhost:${port}`);
 });
 
+// WebSocket server setup
 const wss = new ws.WebSocketServer({ server });
 
 wss.on('connection', (connection, req) => {
   function notifyAboutOnlinePeople() {
+    // Notify clients about current online users
     [...wss.clients].forEach(client => {
       client.send(JSON.stringify({
         online: [...wss.clients].map(c => ({ userId: c.userId, username: c.username })),
@@ -160,6 +164,7 @@ wss.on('connection', (connection, req) => {
 
   connection.isAlive = true;
 
+  // Ping client every 5 seconds
   connection.timer = setInterval(() => {
     connection.ping();
     connection.deathTimer = setTimeout(() => {
@@ -167,28 +172,11 @@ wss.on('connection', (connection, req) => {
       clearInterval(connection.timer);
       connection.terminate();
       notifyAboutOnlinePeople();
-      console.log('dead');
-    }, 1000);
-  }, 5000);
+      console.log('Client connection terminated due to inactivity.');
+    }, 1000); // 1 second timeout for response
+  }, 5000); // 5 second ping interval
 
-
-  const cookies = req.headers.cookie;
-  if (cookies) {
-    const tokenCookieString = cookies.split(';').find(str => str.trim().startsWith('token='));
-    if (tokenCookieString) {
-      const token = tokenCookieString.split('=')[1];
-      if (token) {
-        jwt.verify(token, jwtSecret, {}, (err, userData) => {
-          if (err) throw err;
-          const { userId, username } = userData;
-          connection.userId = userId;
-          connection.username = username;
-        });
-      }
-    }
-  }
-
-
+  // Handle WebSocket messages
   connection.on('message', async (message) => {
     const messageData = JSON.parse(message.toString());
     const { recipient, text, file } = messageData;
@@ -203,13 +191,13 @@ wss.on('connection', (connection, req) => {
       const parts = file.name.split('.');
       const ext = parts[parts.length - 1];
       filename = Date.now() + '.' + ext;
-      const path = __dirname + '/uploads/' + filename;
-      fs.writeFile(path, Buffer.from(file.data.split(',')[1], 'base64'), () => {
-        console.log('File saved:', path);
+      const filePath = __dirname + '/uploads/' + filename;
+      fs.writeFile(filePath, Buffer.from(file.data.split(',')[1], 'base64'), () => {
+        console.log('File saved:', filePath);
       });
     }
 
-
+    // Save message to MongoDB
     if (recipient && (text || file)) {
       try {
         const messageDoc = await Message.create({
@@ -220,7 +208,7 @@ wss.on('connection', (connection, req) => {
         });
         console.log('Message created:', messageDoc);
 
-     
+        // Send message to recipient(s)
         [...wss.clients]
           .filter(c => c.userId === recipient)
           .forEach(c => c.send(JSON.stringify({
@@ -236,6 +224,8 @@ wss.on('connection', (connection, req) => {
     }
   });
 
-
+  // Notify clients about current online users
   notifyAboutOnlinePeople();
 });
+
+module.exports = server; // Export server instance for testing or other purposes
