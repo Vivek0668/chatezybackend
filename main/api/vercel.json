@@ -4,16 +4,33 @@
       {
         "src": "index.js",
         "use": "@vercel/node"
-      },{
-        "functions": {
-    "api/function-name": {
-      "memory": 512,
-      "maxDuration": 30 
-    }
-  }
       }
     ],
     "routes": [
+      {
+        "src": "/messages/(.*)",
+        "dest": "index.js"
+      },
+      {
+        "src": "/people",
+        "dest": "index.js"
+      },
+      {
+        "src": "/profile",
+        "dest": "index.js"
+      },
+      {
+        "src": "/login",
+        "dest": "index.js"
+      },
+      {
+        "src": "/logout",
+        "dest": "index.js"
+      },
+      {
+        "src": "/register",
+        "dest": "index.js"
+      },
       {
         "src": "/(.*)",
         "dest": "index.js"
