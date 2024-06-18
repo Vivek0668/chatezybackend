@@ -4,6 +4,13 @@
       {
         "src": "index.js",
         "use": "@vercel/node"
+      },{
+        "functions": {
+    "api/function-name": {
+      "memory": 512,
+      "maxDuration": 30 
+    }
+  }
       }
     ],
     "routes": [
